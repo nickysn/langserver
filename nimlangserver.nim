@@ -2,7 +2,8 @@ import macros, strformat, faststreams/async_backend,
   faststreams/asynctools_adapters, faststreams/inputs, faststreams/outputs,
   json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
-  ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils"
+  ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
+  std/posix_utils, std/posix
 
 const
   RESTART_COMMAND = "nimlangserver.restart"
@@ -156,10 +157,35 @@ proc `or`*[T, Y](fut1: Future[T], fut2: Future[Y]): Future[void] =
 proc getCharacter(ls: LanguageServer, uri: string, line: int, character: int): int =
   return ls.openFiles[uri].fingerTable[line].utf16to8(character)
 
-proc initialize(ls: LanguageServer, params: InitializeParams):
+proc monitorClientProcess(param: tuple[clientPid: Pid, ls: LanguageServer, pipeInput: AsyncInputStream]) {.thread.} =
+  debug "monitorClientProcess thread started"
+  while true:
+    sleep(1000)
+    debug "checking if client is alive..."
+    try:
+      sendSignal(param.clientPid, 0)
+      debug "it's alive!"
+    except IOError:
+      #for ns in param.ls.projectFiles.values:
+      #  let ns = await ns
+      #  #ns.waitFor.stop()
+      #  ns.stop()
+      param.ls.isShutdown = true
+      let s = InputStream param.pipeInput
+      s.close()
+      break
+
+proc initialize(t: tuple[ls: LanguageServer, pipeInput: AsyncInputStream], params: InitializeParams):
     Future[InitializeResult] {.async.} =
   debug "Initialize received..."
-  ls.initializeParams = params
+  if params.processId.isSome() and params.processId.get.kind == JInt:
+    let clientProcessId = params.processId.get.num
+    debug "Client process id", pid = $clientProcessId
+    var
+      thread: Thread[tuple[clientPid: Pid, ls: LanguageServer, pipeInput: AsyncInputStream]]
+    sendSignal(Pid(clientProcessId), 0)
+    createThread(thread, monitorClientProcess, (clientPid: Pid(clientProcessId), ls: t.ls, pipeInput: t.pipeInput))
+  t.ls.initializeParams = params
   result = InitializeResult(
     capabilities: ServerCapabilities(
       textDocumentSync: some(%TextDocumentSyncOptions(
@@ -960,7 +986,7 @@ proc registerHandlers*(connection: StreamConnection,
     storageDir: storageDir)
   result = ls
 
-  connection.register("initialize", partial(initialize, ls))
+  connection.register("initialize", partial(initialize, (ls, pipeInput)))
   connection.register("textDocument/completion", partial(completion, ls))
   connection.register("textDocument/definition", partial(definition, ls))
   connection.register("textDocument/declaration", partial(declaration, ls))
