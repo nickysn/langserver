@@ -1,8 +1,9 @@
 import macros, strformat, faststreams/async_backend,
-  faststreams/asynctools_adapters, faststreams/inputs, faststreams/outputs,
+  faststreams/chronos_adapters, faststreams/inputs, faststreams/outputs,
   json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
-  ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils"
+  ./utils, ./pipes, chronicles, std/re, uri, "$nim/compiler/pathutils",
+  chronos
 
 const
   RESTART_COMMAND = "nimlangserver.restart"
@@ -997,6 +998,7 @@ when isMainModule:
       let storageDir = ensureStorageDir()
       var
         pipe = createPipe(register = true, nonBlockingWrite = false)
+        pip2: StreamTransport
         stdioThread: Thread[tuple[pipe: AsyncPipe, file: File]]
 
       createThread(stdioThread, copyFileToPipe, (pipe: pipe, file: stdin))

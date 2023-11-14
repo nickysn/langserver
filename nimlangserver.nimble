@@ -9,8 +9,10 @@ bin           = @["nimlangserver"]
 skipDirs      = @["tests"]
 
 requires "nim >= 1.0.0",
-         "https://github.com/yyoncho/asynctools#non-blocking",
-         "https://github.com/yyoncho/nim-json-rpc#notif-changes",
+         #"https://github.com/yyoncho/asynctools#non-blocking",
+         #"https://github.com/yyoncho/nim-json-rpc#notif-changes",
+         "json_rpc",
+         "chronos",
          "with",
          "chronicles"
 
